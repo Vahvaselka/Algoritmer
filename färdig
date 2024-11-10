@@ -1,0 +1,214 @@
+import javax.swing.*;
+import java.awt.*;
+import java.util.Random;
+
+public class Ex1 {
+    private static final int WIDTH = 800;  // Size of the window in pixels
+    private static final int HEIGHT = 800;
+    private static int cells = 100;    // The size of the maze is cells*cells (default is 20*20)
+
+    public static void main(String[] args) {
+        // Get the size of the maze from the command line
+        if (args.length > 0) {
+            try {
+                cells = Integer.parseInt(args[0]);  // The maze is of size cells*cells
+            } catch (NumberFormatException e) {
+                System.err.println("Argument " + args[0] + " should be an integer");
+                System.exit(-1);
+            }
+        }
+        // Check that the size is valid
+        if ((cells <= 1) || (cells > 100)) {
+            System.err.println("Invalid size, must be between 2 and 100 ");
+            System.exit(-1);
+        }
+
+        Runnable r = new Runnable() {
+            public void run() {
+                // Create a JComponent for the maze
+                MazeComponent mazeComponent = new MazeComponent(WIDTH, HEIGHT, cells);
+                // Change the text of the OK button to "Close"
+                UIManager.put("OptionPane.okButtonText", "Close");
+                JOptionPane.showMessageDialog(null, mazeComponent, "Maze " + cells + " by " + cells,
+                        JOptionPane.INFORMATION_MESSAGE);
+            }
+        };
+        SwingUtilities.invokeLater(r);
+    }
+}
+
+class MazeComponent extends JComponent {
+    protected int width;
+    protected int height;
+    protected int cells;
+    protected int cellWidth;
+    protected int cellHeight;
+    private Random random;
+    private int[] parent;
+    private int[] size;
+    private int[][] grid;
+
+    MazeComponent(int w, int h, int c) {
+        super();
+        cells = c;
+        cellWidth = w/cells;
+        cellHeight = h/cells;
+        width = c*cellWidth;
+        height = c*cellHeight;
+        random = new Random();
+        setPreferredSize(new Dimension(width+1, height+1));
+    }
+
+    public void paintComponent(Graphics g) {
+        super.paintComponent(g);
+
+        g.setColor(Color.yellow);
+        g.fillRect(0, 0, width, height);
+
+        g.setColor(Color.blue);
+        for (int i = 0; i <= cells; i++) {
+            g.drawLine(0, i*cellHeight, cells*cellWidth, i*cellHeight);
+        }
+        for (int j = 0; j <= cells; j++) {
+            g.drawLine(j*cellWidth, 0, j*cellWidth, cells*cellHeight);
+        }
+
+        paintCell(0, 0, Color.green, g);
+        drawWall(-1, 0, 2, g);
+        paintCell(cells-1, cells-1, Color.pink, g);
+        drawWall(cells-1, cells-1, 2, g);
+
+        g.setColor(Color.yellow);
+        createMaze(cells, g);
+    }
+
+    private void createMaze(int cells, Graphics g) {
+        this.cells = cells;
+        this.grid = new int[cells][cells];
+        this.parent = new int[cells * cells];
+        this.size = new int[cells * cells];
+        initializeMaze();
+        initializeUnionFind();
+        generateMaze(g);
+    }
+
+    private void initializeMaze() {
+        for (int i = 0; i < cells; i++) {
+            for (int j = 0; j < cells; j++) {
+                grid[i][j] = 0b1111;
+            }
+        }
+    }
+
+    private void initializeUnionFind() {
+        for (int i = 0; i < parent.length; i++) {
+            parent[i] = i;
+            size[i] = 1;
+        }
+    }
+
+    private int find(int x) {
+        if (parent[x] != x) {
+            parent[x] = find(parent[x]);
+        }
+        return parent[x];
+    }
+
+    private void union(int x, int y) {
+        int rootX = find(x);
+        int rootY = find(y);
+
+        if (rootX != rootY) {
+            if (size[rootX] < size[rootY]) {
+                parent[rootX] = rootY;
+                size[rootY] += size[rootX];
+            } else {
+                parent[rootY] = rootX;
+                size[rootX] += size[rootY];
+            }
+        }
+    }
+
+    private void generateMaze(Graphics g) {
+        int totalCells = cells * cells;
+        int connectedCells = 1;
+
+        while (connectedCells < totalCells) {
+            int x = random.nextInt(cells);
+            int y = random.nextInt(cells);
+            int direction = random.nextInt(4);
+
+            int nx = x, ny = y;
+            switch (direction) {
+                case 0: ny = y - 1; break;  // Up
+                case 1: nx = x + 1; break;  // Right
+                case 2: ny = y + 1; break;  // Down
+                case 3: nx = x - 1; break;  // Left
+            }
+
+            if (nx >= 0 && ny >= 0 && nx < cells && ny < cells) {
+                int cell1 = x * cells + y;
+                int cell2 = nx * cells + ny;
+
+                if (find(cell1) != find(cell2)) {
+                    union(cell1, cell2);
+                    removeWall(x, y, nx, ny, g);
+                    connectedCells = size[find(0)];
+                }
+            }
+        }
+    }
+
+    private void removeWall(int x1, int y1, int x2, int y2, Graphics g) {
+        g.setColor(Color.yellow);
+
+        if (x1 == x2) {
+            if (y1 > y2) {
+                grid[x1][y1] &= ~0b0001;
+                grid[x2][y2] &= ~0b0100;
+                drawWall(x1, y1, 1, g);
+            } else {
+                grid[x1][y1] &= ~0b0100;
+                grid[x2][y2] &= ~0b0001;
+                drawWall(x1, y1, 3, g);
+            }
+        } else {
+            if (x1 > x2) {
+                grid[x1][y1] &= ~0b0010;
+                grid[x2][y2] &= ~0b1000;
+                drawWall(x1, y1, 0, g);
+            } else {
+                grid[x1][y1] &= ~0b1000;
+                grid[x2][y2] &= ~0b0010;
+                drawWall(x1, y1, 2, g);
+            }
+        }
+    }
+
+    private void paintCell(int x, int y, Color c, Graphics g) {
+        int xpos = x * cellWidth;
+        int ypos = y * cellHeight;
+        g.setColor(c);
+        g.fillRect(xpos + 1, ypos + 1, cellWidth - 1, cellHeight - 1);
+    }
+
+    private void drawWall(int x, int y, int w, Graphics g) {
+        int xpos = x * cellWidth;
+        int ypos = y * cellHeight;
+
+        switch (w) {
+            case 0:
+                g.drawLine(xpos, ypos + 1, xpos, ypos + cellHeight - 1);
+                break;
+            case 1:
+                g.drawLine(xpos + 1, ypos, xpos + cellWidth - 1, ypos);
+                break;
+            case 2:
+                g.drawLine(xpos + cellWidth, ypos + 1, xpos + cellWidth, ypos + cellHeight - 1);
+                break;
+            case 3:
+                g.drawLine(xpos + 1, ypos + cellHeight, xpos + cellWidth - 1, ypos + cellHeight);
+                break;
+        }
+    }
+}
